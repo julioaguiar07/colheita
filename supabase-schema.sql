@@ -118,3 +118,18 @@ create policy "admin configuracoes" on public.configuracoes for all to authentic
 -- Número de cada pessoa (o mesmo da folha de pesagem), para buscar pelo número
 alter table public.pessoas add column if not exists numero integer check (numero > 0);
 create unique index if not exists pessoas_numero_key on public.pessoas (numero);
+-- Preço do kg por dia (definido no painel, aparece no link público)
+create table if not exists public.precos_dia (
+  dia           date primary key,
+  preco         numeric(8,3) not null check (preco > 0 and preco < 100),
+  atualizado_em timestamptz not null default now()
+);
+alter table public.precos_dia enable row level security;
+drop policy if exists "leitura publica precos" on public.precos_dia;
+drop policy if exists "admin precos" on public.precos_dia;
+create policy "leitura publica precos" on public.precos_dia for select to anon, authenticated using (true);
+create policy "admin precos" on public.precos_dia for all to authenticated using (public.eh_admin()) with check (public.eh_admin());
+grant select on public.precos_dia to anon, authenticated;
+grant insert, update, delete on public.precos_dia to authenticated;
+
+select count(*) as dias_com_preco from public.precos_dia;

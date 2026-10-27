@@ -1,15 +1,15 @@
 import { CONFIG } from './config.js';
-import * as S from './store.js?v=3';
+import * as S from './store.js?v=4';
 import {
-  hoje, addDias, fmtDia, fmtMes, fmtN, fmtR$, parsePesos, soma, avatar, esc, semAcento, primeiroNome, nro, rotulo, busca, combina, exato, porNumero,
+  hoje, addDias, fmtDia, fmtMes, fmtN, fmtR$, parsePesos, soma, avatar, esc, semAcento, primeiroNome, nro, rotulo, busca, combina, exato, porNumero, valores, diasSemPreco, fmtPreco, lerPreco, listaCurta,
   ranking, porDia, listaDias, parseIso, SEMANA, toast, iso,
-} from './util.js?v=3';
-import { grafico, eixo, grad, C } from './charts.js?v=3';
+} from './util.js?v=4';
+import { grafico, eixo, grad, C } from './charts.js?v=4';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const st = {
-  aba: 'lancar', dia: hoje(), pessoas: [], salvo: {}, txt: {}, preco: 1.4, filtro: '',
+  aba: 'lancar', dia: hoje(), pessoas: [], salvo: {}, txt: {}, precos: {}, pSel: null, filtro: '',
   an: { modo: '30', ini: addDias(hoje(), -29), fim: hoje() }, ordem: { col: 'kg', dir: -1 },
 };
 $('#fazenda').textContent = CONFIG.FAZENDA;
@@ -22,7 +22,7 @@ function irPara(aba) {
   st.aba = aba;
   $$('#abas button').forEach(b => b.setAttribute('aria-pressed', b.dataset.aba === aba));
   $('.salvarbar')?.classList.remove('on');
-  ({ lancar: telaLancar, pessoas: telaPessoas, analise: telaAnalise })[aba]();
+  ({ lancar: telaLancar, pessoas: telaPessoas, precos: telaPrecos, analise: telaAnalise })[aba]();
 }
 
 $('#btnLink').onclick = async () => {
@@ -156,7 +156,10 @@ function atualizarResumo() {
     <div class="stat principal"><span>Colhido no dia</span><b>${fmtN(kg)}<small>kg</small></b></div>
     <div class="stat"><span>Pessoas que pesaram</span><b>${pessoas}<small>de ${st.pessoas.filter(p => p.ativo).length}</small></b></div>
     <div class="stat"><span>Pesagens</span><b>${n}</b></div>
-    <div class="stat"><span>A pagar no dia</span><b>${fmtR$(kg * st.preco)}</b></div>`;
+    ${st.precos[st.dia] != null
+      ? `<div class="stat"><span>A pagar no dia · ${fmtPreco(st.precos[st.dia])}/kg</span><b>${fmtR$(kg * st.precos[st.dia])}</b></div>`
+      : `<button class="stat stat-acao" id="irPreco"><span>A pagar no dia</span><b class="sem-preco">Definir preço</b></button>`}`;
+  const ip = $('#irPreco'); if (ip) ip.onclick = () => { st.pSel = new Set([st.dia]); irPara('precos'); };
   const s = sujos(), bar = $('.salvarbar');
   if (!bar) return;
   bar.classList.toggle('on', s.length > 0 && st.aba === 'lancar');
@@ -326,6 +329,97 @@ function telaPessoas() {
   };
 }
 
+/* ================= PREÇOS ================= */
+// Preço do kg por dia: escolhe um ou vários dias, digita o valor, confere quanto cada um recebe e confirma.
+async function telaPrecos() {
+  $('#conteudo').innerHTML = `<div class="precos">
+    <div class="card">
+      <div class="card-cab"><div><h2>Dias de colheita</h2><div class="sub">Toque nos dias para escolher. Pode ser um só ou vários.</div></div></div>
+      <div class="sel-rapida"><button class="btn" data-s="sem">Dias sem preço</button><button class="btn" data-s="todos">Todos</button><button class="btn" data-s="nenhum">Limpar</button></div>
+      <div class="dias-grade" id="diasGrade"><div class="sem-resultado">Carregando…</div></div>
+    </div>
+    <div class="card">
+      <div class="card-cab"><div><h2>Valor do kg</h2><div class="sub" id="pSub">Escolha um ou mais dias de colheita.</div></div></div>
+      <label class="preco-novo">R$ por kg<input class="campo" id="pNovo" inputmode="decimal" autocomplete="off" placeholder="1,40" aria-label="Valor do quilo em reais"></label>
+      <div id="pPrevia"></div>
+      <div class="p-acoes">
+        <button class="btn primario" id="pConfirmar" disabled>Confirmar</button>
+        <button class="btn" id="pRemover" hidden>Tirar o preço dos dias escolhidos</button>
+      </div>
+    </div></div>`;
+  let dados = [];
+  try { [dados, st.precos] = await Promise.all([S.totais(CONFIG.INICIO_SAFRA, hoje()), S.precosDias()]); }
+  catch (e) { $('#diasGrade').innerHTML = `<div class="sem-resultado">Não foi possível carregar. ${esc(e.message)}</div>`; return; }
+  const pd = porDia(dados);
+  const dias = Object.keys(pd).sort().reverse();
+  if (!st.pSel) st.pSel = new Set(dias.filter(d => st.precos[d] == null));
+  for (const d of [...st.pSel]) if (!pd[d]) st.pSel.delete(d);
+
+  const grade = () => {
+    $('#diasGrade').innerHTML = dias.length ? dias.map(d => {
+      const p = st.precos[d], on = st.pSel.has(d);
+      return `<button class="dia-card${on ? ' on' : ''}" data-d="${d}" aria-pressed="${on}">
+        <span class="dc-dia">${esc(fmtDia(d, 'semana'))}</span>
+        <span class="dc-kg num">${fmtN(pd[d].kg)} kg</span>
+        <span class="dc-preco ${p != null ? '' : 'falta'}">${p != null ? `${fmtPreco(p)}/kg` : 'sem preço'}</span>
+      </button>`;
+    }).join('') : '<div class="sem-resultado">Ainda não há pesagens lançadas.</div>';
+    $$('#diasGrade .dia-card').forEach(b => b.onclick = () => { const d = b.dataset.d; st.pSel.has(d) ? st.pSel.delete(d) : st.pSel.add(d); grade(); previa(); });
+  };
+  $$('.sel-rapida button').forEach(b => b.onclick = () => {
+    st.pSel = new Set(b.dataset.s === 'todos' ? dias : b.dataset.s === 'sem' ? dias.filter(d => st.precos[d] == null) : []);
+    grade(); previa();
+  });
+
+  const previa = () => {
+    const sel = [...st.pSel].sort(), novo = lerPreco($('#pNovo').value);
+    const btn = $('#pConfirmar'), rem = $('#pRemover');
+    rem.hidden = !sel.some(d => st.precos[d] != null);
+    if (!sel.length) { $('#pSub').textContent = 'Escolha um ou mais dias de colheita.'; $('#pPrevia').innerHTML = ''; btn.disabled = true; btn.textContent = 'Confirmar'; return; }
+    const kgSel = sel.reduce((s, d) => s + pd[d].kg, 0);
+    $('#pSub').textContent = `${sel.length} ${sel.length === 1 ? 'dia escolhido' : 'dias escolhidos'} · ${fmtN(kgSel)} kg`;
+    const tSel = dados.filter(t => st.pSel.has(t.dia));
+    const antes = valores(tSel, st.precos);
+    const novoP = novo == null ? null : Object.fromEntries(sel.map(d => [d, novo]));
+    const depois = novoP ? valores(tSel, novoP) : null;
+    const rk = ranking(tSel, st.pessoas).sort((a, b) => (a.pessoa.numero ?? 1e9) - (b.pessoa.numero ?? 1e9));
+    const tAntes = [...antes.values()].reduce((s, v) => s + v.valor, 0), tDep = depois ? [...depois.values()].reduce((s, v) => s + v.valor, 0) : 0;
+    const temAntes = sel.some(d => st.precos[d] != null);
+    $('#pPrevia').innerHTML = `
+      <ul class="p-dias">${sel.map(d => `<li><span>${esc(fmtDia(d, 'semana'))}</span><span class="num">${fmtN(pd[d].kg)} kg${novo != null ? ` × ${fmtPreco(novo)} = <b>${fmtR$(pd[d].kg * novo)}</b>` : st.precos[d] != null ? ` · hoje ${fmtPreco(st.precos[d])}/kg` : ''}</span></li>`).join('')}</ul>
+      ${novo == null ? '<p class="dica">Digite o valor do kg para ver quanto cada pessoa vai receber.</p>' : `
+      <div class="p-total"><span>Total a pagar nesses dias</span><b>${fmtR$(tDep)}</b>${temAntes ? `<small>antes: ${fmtR$(tAntes)}</small>` : ''}</div>
+      <div class="tabela-wrap p-tabela"><table class="folha">
+        <thead><tr><th>Nº</th><th>Nome</th><th>Kg</th>${temAntes ? '<th>Antes</th>' : ''}<th>Vai receber</th></tr></thead>
+        <tbody>${rk.map(r => `<tr><td class="num">${r.pessoa.numero ?? '–'}</td><td>${esc(r.pessoa.nome)}</td><td>${fmtN(r.kg)}</td>${temAntes ? `<td class="dim">${antes.get(r.pessoa.id)?.valor ? fmtR$(antes.get(r.pessoa.id).valor) : '–'}</td>` : ''}<td><b>${fmtR$(depois.get(r.pessoa.id)?.valor || 0)}</b></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td></td><td>Total · ${rk.length} pessoas</td><td>${fmtN(kgSel)}</td>${temAntes ? `<td>${fmtR$(tAntes)}</td>` : ''}<td>${fmtR$(tDep)}</td></tr></tfoot>
+      </table></div>`}`;
+    btn.disabled = novo == null;
+    btn.textContent = novo == null ? 'Confirmar' : `Confirmar ${fmtPreco(novo)}/kg em ${sel.length} ${sel.length === 1 ? 'dia' : 'dias'}`;
+  };
+  $('#pNovo').oninput = previa;
+  $('#pNovo').onkeydown = e => { if (e.key === 'Enter' && !$('#pConfirmar').disabled) $('#pConfirmar').click(); };
+  $('#pConfirmar').onclick = async () => {
+    const sel = [...st.pSel].sort(), novo = lerPreco($('#pNovo').value);
+    if (!sel.length || novo == null) return;
+    const btn = $('#pConfirmar'); btn.disabled = true; btn.textContent = 'Salvando…';
+    try {
+      await S.definirPrecos(sel, novo);
+      for (const d of sel) st.precos[d] = novo;
+      toast(`Preço de ${fmtPreco(novo)}/kg salvo em ${sel.length} ${sel.length === 1 ? 'dia' : 'dias'}. Já aparece no link do ranking.`, 'ok');
+      $('#pNovo').value = ''; grade(); previa();
+    } catch (e) { toast('Não salvou: ' + e.message, 'erro'); previa(); }
+  };
+  $('#pRemover').onclick = async () => {
+    const sel = [...st.pSel].filter(d => st.precos[d] != null);
+    if (!sel.length || !confirm(`Tirar o preço de ${sel.length} ${sel.length === 1 ? 'dia' : 'dias'}? Os quilos continuam lançados.`)) return;
+    try { await S.removerPrecos(sel); for (const d of sel) delete st.precos[d]; toast('Preço retirado', 'ok'); grade(); previa(); }
+    catch (e) { toast(e.message, 'erro'); }
+  };
+  grade(); previa();
+  setTimeout(() => $('#pNovo').focus(), 50);
+}
+
 /* ================= ANÁLISE ================= */
 function faixa() {
   const a = st.an, h = hoje();
@@ -341,7 +435,6 @@ async function telaAnalise() {
     <div class="periodos">
       <div class="seg" id="segAn">${[['7', '7 dias'], ['30', '30 dias'], ['mes', 'Este mês'], ['safra', 'Safra'], ['custom', 'Escolher']].map(([k, t]) => `<button data-m="${k}" aria-pressed="${a.modo === k}">${t}</button>`).join('')}</div>
       <div class="custom" ${a.modo === 'custom' ? '' : 'hidden'}><input type="date" class="campo" id="anIni" value="${a.ini}" max="${hoje()}"><span class="dim">até</span><input type="date" class="campo" id="anFim" value="${a.fim}" max="${hoje()}"></div>
-      <label class="preco">R$ por kg <input class="campo" id="preco" inputmode="decimal" value="${String(st.preco).replace('.', ',')}"></label>
     </div>
     <div class="stats s5" id="anStats"></div>
     <div class="graficos">
@@ -356,11 +449,6 @@ async function telaAnalise() {
   $$('#segAn button').forEach(b => b.onclick = () => { st.an.modo = b.dataset.m; telaAnalise(); });
   $('#anIni')?.addEventListener('change', e => { st.an.ini = e.target.value; if (st.an.ini > st.an.fim) st.an.fim = st.an.ini; telaAnalise(); });
   $('#anFim')?.addEventListener('change', e => { st.an.fim = e.target.value; if (st.an.fim < st.an.ini) st.an.ini = st.an.fim; telaAnalise(); });
-  $('#preco').onchange = async e => {
-    const v = Number(e.target.value.replace(',', '.'));
-    if (!(v > 0 && v < 100)) { toast('Preço inválido', 'erro'); e.target.value = String(st.preco).replace('.', ','); return; }
-    try { await S.definirPreco(v); st.preco = v; toast('Preço por kg atualizado', 'ok'); telaAnalise(); } catch (er) { toast(er.message, 'erro'); }
-  };
   $('#btnPrint').onclick = () => window.print();
 
   const [ini, fim] = faixa();
@@ -375,9 +463,11 @@ function desenharAnalise(dados, ini, fim) {
   const rk = ranking(dados, st.pessoas), pd = porDia(dados);
   const total = rk.reduce((s, r) => s + r.kg, 0), nPes = rk.reduce((s, r) => s + r.n, 0);
   const diasCom = Object.keys(pd).sort();
+  const val = valores(dados, st.precos), semP = diasSemPreco(dados, st.precos);
+  const totalR$ = [...val.values()].reduce((s, v) => s + v.valor, 0);
   $('#anStats').innerHTML = `
     <div class="stat principal"><span>Castanha colhida</span><b>${fmtN(total)}<small>kg</small></b></div>
-    <div class="stat"><span>Folha do período</span><b>${fmtR$(total * st.preco)}</b></div>
+    <div class="stat"><span>Folha do período${semP.length ? ` · ${semP.length} ${semP.length === 1 ? 'dia' : 'dias'} sem preço` : ''}</span><b>${fmtR$(totalR$)}</b></div>
     <div class="stat"><span>Média por dia de colheita</span><b>${diasCom.length ? fmtN(total / diasCom.length) : '–'}<small>kg</small></b></div>
     <div class="stat"><span>Média por pessoa/dia</span><b>${dados.length ? fmtN(total / dados.length) : '–'}<small>kg</small></b></div>
     <div class="stat"><span>Peso médio por pesagem</span><b>${nPes ? fmtN(total / nPes) : '–'}<small>kg</small></b></div>`;
@@ -434,22 +524,24 @@ function desenharAnalise(dados, ini, fim) {
   });
 
   // Folha
-  $('#folhaSub').textContent = `${fmtDia(ini, 'curto')}/${ini.slice(0, 4)} a ${fmtDia(fim, 'curto')}/${fim.slice(0, 4)} · ${fmtR$(st.preco)} por kg`;
-  const linhas = rk.map(r => ({ numero: r.pessoa.numero ?? null, nome: r.pessoa.nome, dias: r.dias, n: r.n, kg: r.kg, media: r.kg / r.dias, valor: r.kg * st.preco }));
+  $('#folhaSub').innerHTML = `${fmtDia(ini, 'curto')}/${ini.slice(0, 4)} a ${fmtDia(fim, 'curto')}/${fim.slice(0, 4)} · valor pelo preço de cada dia`
+    + (semP.length ? ` · <button class="link" id="folhaSemPreco">${semP.length} ${semP.length === 1 ? 'dia sem preço' : 'dias sem preço'} (${listaCurta(semP)}): os quilos desses dias não entram no valor</button>` : '');
+  const fsp = $('#folhaSemPreco'); if (fsp) fsp.onclick = () => { st.pSel = new Set(semP); irPara('precos'); };
+  const linhas = rk.map(r => ({ numero: r.pessoa.numero ?? null, nome: r.pessoa.nome, dias: r.dias, n: r.n, kg: r.kg, media: r.kg / r.dias, valor: val.get(r.pessoa.id)?.valor || 0 }));
   const cols = [['numero', 'Nº'], ['nome', 'Nome'], ['dias', 'Dias'], ['n', 'Pesagens'], ['kg', 'Kg'], ['media', 'Kg/dia'], ['valor', 'A pagar']];
   const desenharFolha = () => {
     const { col, dir } = st.ordem;
     linhas.sort((a, b) => (typeof a[col] === 'string' ? a[col].localeCompare(b[col]) : a[col] - b[col]) * dir);
     $('#folha').innerHTML = `<thead><tr>${cols.map(([k, t]) => `<th data-k="${k}">${t}${col === k ? (dir > 0 ? ' ↑' : ' ↓') : ''}</th>`).join('')}</tr></thead>
       <tbody>${linhas.map(l => `<tr><td class="num">${l.numero ?? '–'}</td><td>${esc(l.nome)}</td><td>${l.dias}</td><td>${l.n}</td><td>${fmtN(l.kg)}</td><td>${fmtN(l.media)}</td><td>${fmtR$(l.valor)}</td></tr>`).join('') || '<tr><td colspan="7" class="dim" style="text-align:center">Sem pesagens no período</td></tr>'}</tbody>
-      <tfoot><tr><td>Total · ${linhas.length} pessoas</td><td></td><td>${nPes}</td><td>${fmtN(total)}</td><td></td><td>${fmtR$(total * st.preco)}</td></tr></tfoot>`;
+      <tfoot><tr><td>Total · ${linhas.length} pessoas</td><td></td><td>${nPes}</td><td>${fmtN(total)}</td><td></td><td>${fmtR$(totalR$)}</td></tr></tfoot>`;
     $$('#folha th').forEach(th => th.onclick = () => { st.ordem = { col: th.dataset.k, dir: st.ordem.col === th.dataset.k ? -st.ordem.dir : (th.dataset.k === 'nome' || th.dataset.k === 'numero' ? 1 : -1) }; desenharFolha(); });
   };
   desenharFolha();
   $('#btnCsv').onclick = () => {
     const n2 = v => v.toFixed(2).replace('.', ',');
     const csv = ['Nº;Nome;Dias;Pesagens;Kg;Kg por dia;Valor (R$)', ...linhas.map(l => [l.numero ?? '', `"${l.nome}"`, l.dias, l.n, n2(l.kg), n2(l.media), n2(l.valor)].join(';')),
-      ['', '"TOTAL"', '', nPes, n2(total), '', n2(total * st.preco)].join(';')].join('\r\n');
+      ['', '"TOTAL"', '', nPes, n2(total), '', n2(totalR$)].join(';')].join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
     a.download = `folha-colheita-${ini}-a-${fim}.csv`; a.click();
@@ -469,7 +561,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hid
 /* ================= início ================= */
 async function iniciar() {
   try {
-    [st.pessoas, st.preco] = await Promise.all([S.listarPessoas(), S.preco()]);
+    [st.pessoas, st.precos] = await Promise.all([S.listarPessoas(), S.precosDias()]);
   } catch (e) { toast('Erro ao carregar: ' + e.message, 'erro'); }
   irPara(st.pessoas.length ? 'lancar' : 'pessoas');
 }

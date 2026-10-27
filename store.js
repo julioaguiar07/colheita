@@ -1,5 +1,5 @@
 import { CONFIG } from './config.js';
-import { iso, addDias, hoje, porNumero } from './util.js?v=3';
+import { iso, addDias, hoje, porNumero } from './util.js?v=4';
 
 export const DEMO = !CONFIG.SUPABASE_URL;
 
@@ -117,4 +117,20 @@ export async function preco() {
 export async function definirPreco(v) {
   if (DEMO) { db().preco = v; salvar(); return; }
   ok(await (await sb()).from('configuracoes').upsert({ chave: 'preco_kg', valor: v }));
+}
+
+/* ---------------- preço do kg por dia ---------------- */
+// { 'YYYY-MM-DD': preço }
+export async function precosDias() {
+  if (DEMO) return { ...(db().precos || {}) };
+  const rows = ok(await (await sb()).from('precos_dia').select('dia,preco'));
+  return Object.fromEntries(rows.map(r => [r.dia, Number(r.preco)]));
+}
+export async function definirPrecos(dias, preco) {
+  if (DEMO) { const d = db(); d.precos ||= {}; for (const dia of dias) d.precos[dia] = preco; salvar(); return; }
+  ok(await (await sb()).from('precos_dia').upsert(dias.map(dia => ({ dia, preco, atualizado_em: new Date().toISOString() }))));
+}
+export async function removerPrecos(dias) {
+  if (DEMO) { const d = db(); for (const dia of dias) delete d.precos?.[dia]; salvar(); return; }
+  ok(await (await sb()).from('precos_dia').delete().in('dia', dias));
 }

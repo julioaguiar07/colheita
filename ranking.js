@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
-import * as S from './store.js?v=3';
-import { hoje, addDias, fmtDia, fmtMes, fmtN, periodo, ranking, porDia, entre, listaDias, avatar, esc, primeiroNome, semAcento, parseIso, toast, nro, rotulo, busca, combina, exato } from './util.js?v=3';
-import { grafico, eixo, grad, C, SERIE } from './charts.js?v=3';
+import * as S from './store.js?v=4';
+import { hoje, addDias, fmtDia, fmtMes, fmtN, periodo, ranking, porDia, entre, listaDias, avatar, esc, primeiroNome, semAcento, parseIso, toast, nro, rotulo, busca, combina, exato, fmtR$, valores, diasSemPreco, fmtPreco, listaCurta } from './util.js?v=4';
+import { grafico, eixo, grad, C, SERIE } from './charts.js?v=4';
 
 const $ = s => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -10,7 +10,7 @@ const st = {
   dia: params.get('dia') || null,
   mes: params.get('mes') || hoje().slice(0, 7),
   pessoas: [], rk: [], dados: [], per: null,
-  aba: params.get('aba') === 'ranking' ? 'ranking' : 'numeros', safra: [], pesDia: [], fNum: '',
+  aba: params.get('aba') === 'ranking' ? 'ranking' : 'numeros', safra: [], pesDia: [], fNum: '', precos: {},
 };
 
 $('#fazenda').textContent = CONFIG.FAZENDA;
@@ -71,12 +71,13 @@ async function carregar(silencioso = false) {
   $('#prox').disabled = st.modo === 'mes' ? st.mes >= hoje().slice(0, 7) : st.dia >= hoje();
   syncUrl();
   try {
-    const [pessoas, dados, safra, pesDia] = await Promise.all([
+    const [pessoas, dados, safra, pesDia, precos] = await Promise.all([
       S.listarPessoas(), S.totais(per.anterior.inicio, per.fim),
       S.totais(CONFIG.INICIO_SAFRA, hoje()),
       st.modo === 'dia' ? S.pesagensDoDia(st.dia) : Promise.resolve([]),
+      S.precosDias().catch(() => ({})),
     ]);
-    st.pessoas = pessoas; st.dados = dados; st.safra = safra; st.pesDia = pesDia;
+    st.pessoas = pessoas; st.dados = dados; st.safra = safra; st.pesDia = pesDia; st.precos = precos;
     render(silencioso);
     $('#atualizado').textContent = 'atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
@@ -144,6 +145,12 @@ function renderNumeros() {
   for (const t of st.safra) safra.set(t.pessoa_id, (safra.get(t.pessoa_id) || 0) + +t.kg);
   for (const p of st.pesDia) { if (!pes.has(p.pessoa_id)) pes.set(p.pessoa_id, []); pes.get(p.pessoa_id).push(+p.kg); }
 
+  const vPer = valores(atual, st.precos), vSaf = valores(st.safra, st.precos);
+  const semPer = diasSemPreco(atual, st.precos), comPreco = Object.keys(st.precos).length > 0;
+  const rs = v => (comPreco ? `<small class="rs">${v ? fmtR$(v) : 'R$ –'}</small>` : '');
+  $('#nInfo').innerHTML = st.modo === 'dia'
+    ? (st.precos[st.dia] != null ? `Preço do kg neste dia: <b>${fmtPreco(st.precos[st.dia])}</b>` : atual.length ? 'O preço do kg deste dia ainda não foi definido.' : '')
+    : (semPer.length ? `Preço do kg ainda não definido para ${listaCurta(semPer)}. O valor em reais conta só os dias com preço.` : atual.length && comPreco ? 'Valor em reais pelo preço do kg de cada dia.' : '');
   const rotPer = st.modo === 'dia' ? 'No dia' : st.modo === 'mes' ? 'No mês' : `Em ${st.modo} dias`;
   $('#nCab').innerHTML = `<span>Nº</span><span>Nome</span><span>${rotPer}</span><span>Na safra</span>`;
 
@@ -159,15 +166,15 @@ function renderNumeros() {
     return `<li><button data-id="${p.id}" aria-label="Número ${p.numero ?? 'sem número'}, ${esc(p.nome)}: ${fmtN(a?.kg || 0)} quilos ${rotPer.toLowerCase()}, ${fmtN(s)} na safra">
       <span class="nbig${p.numero == null ? ' sem' : ''}">${p.numero ?? '–'}</span>
       <span class="quem"><b>${esc(p.nome)}</b><small class="num">${esc(sub)}</small></span>
-      <span class="cper${a ? '' : ' zero'}"><b>${fmtN(a?.kg || 0)}</b><small>kg</small></span>
-      <span class="csaf"><b>${fmtN(s)}</b><small>kg</small></span>
+      <span class="cper${a ? '' : ' zero'}"><b>${fmtN(a?.kg || 0)}</b><small>kg</small>${rs(vPer.get(p.id)?.valor)}</span>
+      <span class="csaf"><b>${fmtN(s)}</b><small>kg</small>${rs(vSaf.get(p.id)?.valor)}</span>
     </button></li>`;
   }).join('') || `<li class="vazio">${b.num != null ? `Ninguém com o número ${esc(b.num)}.` : 'Ninguém com esse nome.'}</li>`;
   $('#nLista').querySelectorAll('[data-id]').forEach(el => el.onclick = () => abrirPerfil(el.dataset.id));
 
   const totPer = atual.reduce((x, t) => x + +t.kg, 0), totSaf = st.safra.reduce((x, t) => x + +t.kg, 0);
   $('#nTot').innerHTML = `<span></span><span>Todos (${st.pessoas.filter(p => p.ativo || per.has(p.id)).length} pessoas)</span>
-    <span class="cper"><b>${fmtN(totPer)}</b><small>kg</small></span><span class="csaf"><b>${fmtN(totSaf)}</b><small>kg</small></span>`;
+    <span class="cper"><b>${fmtN(totPer)}</b><small>kg</small>${rs([...vPer.values()].reduce((x, v) => x + v.valor, 0))}</span><span class="csaf"><b>${fmtN(totSaf)}</b><small>kg</small>${rs([...vSaf.values()].reduce((x, v) => x + v.valor, 0))}</span>`;
 }
 
 function graficos(rk, atual) {
@@ -269,13 +276,20 @@ async function abrirPerfil(id) {
     const melhor = Object.entries(pMeu).sort((a, b) => b[1] - a[1])[0];
     const diasTrab = Object.keys(pMeu).length;
     const rkSafra = ranking(dados, st.pessoas).find(x => x.pessoa.id === id);
+    const temPreco = Object.keys(st.precos).length > 0;
+    const vPer = valores(st.dados.filter(t => t.pessoa_id === id && entre(t, st.per)), st.precos).get(id);
+    const vSaf = valores(meus.filter(t => t.dia >= CONFIG.INICIO_SAFRA), st.precos).get(id);
+    const semP = diasSemPreco(meus.filter(t => t.dia >= CONFIG.INICIO_SAFRA), st.precos);
     sheet.querySelector('#pk').innerHTML = `
       <div class="kpi destaque"><span>No período</span><b>${fmtN(r?.kg || 0)}<small>kg</small></b></div>
       <div class="kpi"><span>Na safra toda</span><b>${fmtN(safra)}<small>kg</small></b></div>
       <div class="kpi"><span>Posição na safra</span><b>${rkSafra ? rkSafra.pos + 'º' : '–'}<small>de ${new Set(dados.map(t => t.pessoa_id)).size}</small></b></div>
       <div class="kpi"><span>Média por dia</span><b>${diasTrab ? fmtN(safra / diasTrab) : '–'}<small>kg</small></b></div>
       <div class="kpi"><span>Melhor dia</span><b>${melhor ? fmtN(melhor[1]) : '–'}<small>${melhor ? fmtDia(melhor[0], 'curto') : ''}</small></b></div>
-      <div class="kpi"><span>Dias colhendo</span><b>${diasTrab}</b></div>`;
+      <div class="kpi"><span>Dias colhendo</span><b>${diasTrab}</b></div>
+      ${temPreco ? `<div class="kpi dinheiro"><span>A receber no período</span><b>${fmtR$(vPer?.valor || 0)}</b></div>
+      <div class="kpi dinheiro"><span>A receber na safra</span><b>${fmtR$(vSaf?.valor || 0)}</b></div>
+      ${semP.length ? `<p class="kpi-nota">Sem preço definido ainda: ${listaCurta(semP)}. Esses dias não entram no valor.</p>` : ''}` : ''}`;
     const dias = listaDias(ini, fim);
     const fz = porDia(dados.filter(t => t.dia >= ini));
     grafico(sheet.querySelector('#gPessoa'), {

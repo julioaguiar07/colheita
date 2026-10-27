@@ -16,6 +16,7 @@ export function fmtDia(s, estilo = 'medio') {
   const d = parseIso(s);
   if (estilo === 'curto') return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
   if (estilo === 'eixo') return `${d.getDate()} ${MES_CURTO[d.getMonth()]}`;
+  if (estilo === 'semana') return `${SEM_CURTA[d.getDay()]}, ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
   const rel = s === hoje() ? 'Hoje' : s === addDias(hoje(), -1) ? 'Ontem' : null;
   const base = `${SEM_CURTA[d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()]}`;
   return rel ? `${rel} · ${base}` : base;
@@ -110,3 +111,22 @@ export function toast(msg, tipo = '') {
   el.textContent = msg; el.dataset.tipo = tipo; el.classList.add('on');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2600);
 }
+
+// Valor a receber: soma de (kg do dia × preço do dia). Dias sem preço não entram no valor.
+// totais = [{pessoa_id, dia, kg}], precos = {dia: preço} → Map(pessoa_id → { valor, kgSemPreco })
+export function valores(totais, precos) {
+  const m = new Map();
+  for (const t of totais) {
+    const a = m.get(t.pessoa_id) || { valor: 0, kgSemPreco: 0 };
+    const p = precos[t.dia];
+    if (p != null) a.valor += +t.kg * p; else a.kgSemPreco += +t.kg;
+    m.set(t.pessoa_id, a);
+  }
+  for (const a of m.values()) a.valor = Math.round(a.valor * 100) / 100;
+  return m;
+}
+export const diasSemPreco = (totais, precos) => [...new Set(totais.map(t => t.dia))].filter(d => precos[d] == null).sort();
+export const fmtPreco = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+export const lerPreco = s => { const v = Number(String(s || '').trim().replace(/^r\$\s*/i, '').replace(',', '.')); return v > 0 && v < 100 ? Math.round(v * 1000) / 1000 : null; };
+// "26/10, 27/10" — com muitos dias mostra os 4 primeiros e "+N"
+export const listaCurta = (ds, max = 4) => ds.slice(0, max).map(d => fmtDia(d, 'curto')).join(', ') + (ds.length > max ? ` e mais ${ds.length - max}` : '');

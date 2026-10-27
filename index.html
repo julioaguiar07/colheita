@@ -9,8 +9,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M38 8c13 2 20 16 15 30-4 12-17 20-29 16-9-3-12-12-8-19 3-6 10-7 13-12 3-6 1-15 9-15z' fill='%23C9A27A'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="app.css?v=3">
-<link rel="stylesheet" href="ranking.css?v=3">
+<link rel="stylesheet" href="app.css?v=4">
+<link rel="stylesheet" href="ranking.css?v=4">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js" defer></script>
 </head>
 <body>
@@ -54,6 +54,7 @@
 
   <main class="numeros" id="vNumeros">
     <input class="campo" id="fNum" inputmode="search" autocomplete="off" placeholder="Procurar número ou nome" aria-label="Procurar por número ou nome">
+    <p class="ninfo" id="nInfo" role="status"></p>
     <div class="ntabela">
       <div class="ncab" id="nCab" aria-hidden="true"></div>
       <ol class="nlista" id="nLista" aria-label="Pessoas em ordem de número"></ol>
@@ -88,6 +89,6 @@
 <div class="sheet-fundo" id="fundo" hidden></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitulo" hidden></div>
 
-<script type="module" src="ranking.js?v=3"></script>
+<script type="module" src="ranking.js?v=4"></script>
 </body>
 </html>

@@ -142,3 +142,11 @@
   .nbig { width: 40px; height: 38px; font-size: 16px; }
   .cper b { font-size: 16px; } .csaf b { font-size: 13px; }
 }
+.cper .rs, .csaf .rs { display: block; margin: 2px 0 0; font: 500 11.5px var(--f-num); color: var(--folha); letter-spacing: -.01em; }
+.csaf .rs { color: color-mix(in srgb, var(--folha) 70%, var(--muted)); }
+.ntot .rs { color: var(--folha); }
+.ninfo { margin: 0; font-size: 13px; color: var(--muted); }
+.ninfo:empty { display: none; }
+.ninfo b { color: var(--folha); font-family: var(--f-num); }
+.kpi.dinheiro b { color: var(--folha); font-size: 20px; }
+.kpi-nota { grid-column: 1 / -1; margin: 0; font-size: 12.5px; color: var(--sol); }

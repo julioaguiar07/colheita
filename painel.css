@@ -116,3 +116,44 @@ table.folha { width: 100%; border-collapse: collapse; font-size: 14px; min-width
 .prow { grid-template-columns: 40px 64px minmax(0, 1fr) auto; }
 .prow .num-campo { font: 600 14px var(--f-num); text-align: center; color: var(--sol); padding: 8px 4px; }
 .lrow.alvo { box-shadow: inset 0 0 0 1px rgba(246, 185, 64, .5); }
+
+/* ---------- Preços do kg por dia ---------- */
+.precos { display: grid; gap: 16px; align-items: start; }
+@media (min-width: 900px) { .precos { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); } }
+.sel-rapida { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.sel-rapida .btn { padding: 7px 13px; font-size: 13px; }
+.dias-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.dia-card {
+  display: grid; gap: 3px; text-align: left; padding: 11px 12px; border-radius: 14px;
+  background: var(--bg2); border: 1px solid var(--line2); transition: border-color .15s, background .15s;
+}
+.dia-card:hover { border-color: #4A3E35; }
+.dia-card.on { background: rgba(255, 106, 61, .12); border-color: var(--caju); box-shadow: inset 0 0 0 1px var(--caju); }
+.dc-dia { font-weight: 700; font-size: 14px; }
+.dia-card.on .dc-dia::after { content: ' ✓'; color: var(--caju); }
+.dc-kg { font-size: 13px; color: var(--muted); }
+.dc-preco { font: 600 12.5px var(--f-num); color: var(--folha); }
+.dc-preco.falta { color: var(--sol); font-family: var(--f-body); font-weight: 600; }
+.preco-novo { display: flex; align-items: center; gap: 10px; font-weight: 600; color: var(--muted); margin-bottom: 12px; }
+.preco-novo .campo { width: 130px; font: 600 22px var(--f-num); padding: 9px 12px; color: var(--text); }
+.p-dias { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.p-dias li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.p-dias li b { color: var(--text); }
+.p-total {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 14px 16px; margin-bottom: 10px; border-radius: 14px;
+  background: linear-gradient(140deg, rgba(255, 106, 61, .18), rgba(246, 185, 64, .06) 70%); border: 1px solid rgba(255, 106, 61, .35);
+}
+.p-total span { color: var(--muted); font-size: 13px; flex: 1 1 100%; }
+.p-total b { font: 600 28px var(--f-num); letter-spacing: -.03em; }
+.p-total small { color: var(--muted); font: 500 13px var(--f-num); }
+.p-tabela { margin: 0 -18px; max-height: 52vh; overflow: auto; }
+.p-tabela .folha td:nth-child(2) { font-family: var(--f-body); text-align: left; font-weight: 600; }
+.p-tabela .folha th:nth-child(2) { text-align: left; }
+.p-tabela .folha td:first-child { font-family: var(--f-num); color: var(--sol); }
+.p-acoes { display: grid; gap: 8px; margin-top: 14px; }
+.p-acoes .btn { width: 100%; padding: 12px 16px; }
+.stat-acao { text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.stat-acao .sem-preco { color: var(--sol); font: 700 18px var(--f-disp); }
+.stat-acao:hover { border-color: var(--sol); }
+.link { background: none; border: 0; padding: 0; color: var(--sol); text-decoration: underline; font: inherit; cursor: pointer; text-align: left; }
+.salvarbar:not(.on) { visibility: hidden; transition: transform .3s cubic-bezier(.2, .8, .2, 1), visibility 0s .3s; }
