@@ -31,7 +31,7 @@ export const fmtR$ = v => brl.format(v);
 
 // "50 24 34", "50,24,34", "50+24+34" → [50,24,34]. Decimal com ponto: 24.5
 export function parsePesos(txt) {
-  const tokens = String(txt || '').split(/[\s,;+\/]+/).filter(Boolean);
+  const tokens = String(txt || '').split(/[\s,;+\/:=\-–]+/).filter(Boolean);
   const pesos = [], erros = [];
   for (const t of tokens) {
     const v = Number(t);
@@ -53,6 +53,20 @@ export const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<':
 export function avatar(p, cls = '') {
   return `<span class="av ${cls}" style="--tom:${tom(p.id)}" aria-hidden="true">${esc(iniciais(p.nome))}</span>`;
 }
+// Número da pessoa (o mesmo da folha de pesagem)
+export const nro = p => (p.numero != null ? `<span class="nro" title="Número ${p.numero}">${p.numero}</span>` : '');
+export const porNumero = (a, b) => (a.numero ?? 1e9) - (b.numero ?? 1e9) || a.nome.localeCompare(b.nome);
+// "26", "nº 26", "#26" → busca por número; qualquer outra coisa → busca por nome
+export function busca(q) {
+  const s = semAcento(q || '').replace(/^(#|n[º°o.]*\s*)(?=\d)/, '').trim();
+  return /^\d+$/.test(s) ? { num: s } : { txt: s };
+}
+export function combina(p, b) {
+  if (b.num != null) return p.numero != null && String(p.numero).startsWith(b.num);
+  return !b.txt || semAcento(p.nome).includes(b.txt);
+}
+export const rotulo = p => (p.numero != null ? `${p.numero} · ` : '') + primeiroNome(p.nome);
+export const exato = (p, b) => b.num != null && String(p.numero) === b.num;
 export const primeiroNome = n => { const p = n.trim().split(/\s+/); return p.length > 1 && p[1].length <= 3 ? p.slice(0, 3).join(' ') : p.slice(0, 2).join(' '); };
 
 // Períodos

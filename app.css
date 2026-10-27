@@ -105,3 +105,10 @@ input[type=date].campo, input[type=month].campo { color-scheme: dark; }
 .sheet .alca { width: 44px; height: 5px; border-radius: 9px; background: var(--line2); margin: 0 auto 12px; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+/* Número da pessoa (o mesmo da folha de pesagem) */
+.nro {
+  display: inline-block; min-width: 24px; margin-right: 7px; padding: 3px 5px; vertical-align: 1px;
+  font: 600 11px/1 var(--f-num); text-align: center; letter-spacing: 0;
+  color: var(--sol); background: rgba(246, 185, 64, .1); border: 1px solid rgba(246, 185, 64, .28); border-radius: 6px;
+}

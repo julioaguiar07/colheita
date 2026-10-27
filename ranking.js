@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
-import * as S from './store.js';
-import { hoje, addDias, fmtDia, fmtMes, fmtN, periodo, ranking, porDia, entre, listaDias, avatar, esc, primeiroNome, semAcento, parseIso, toast } from './util.js';
-import { grafico, eixo, grad, C, SERIE } from './charts.js';
+import * as S from './store.js?v=2';
+import { hoje, addDias, fmtDia, fmtMes, fmtN, periodo, ranking, porDia, entre, listaDias, avatar, esc, primeiroNome, semAcento, parseIso, toast, nro, rotulo, busca, combina, exato } from './util.js?v=2';
+import { grafico, eixo, grad, C, SERIE } from './charts.js?v=2';
 
 const $ = s => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -88,7 +88,7 @@ function render() {
     return `<button class="degrau p${p}" data-id="${r.pessoa.id}" aria-label="${p}º lugar: ${esc(r.pessoa.nome)}, ${fmtN(r.kg)} quilos">
       ${p === 1 ? '<span class="coroa" aria-hidden="true">🏆</span>' : ''}
       <span class="anel" data-pos="${p}">${avatar(r.pessoa)}</span>
-      <span class="nome">${esc(primeiroNome(r.pessoa.nome))}</span>
+      <span class="nome">${nro(r.pessoa)}${esc(primeiroNome(r.pessoa.nome))}</span>
       <span class="kg">${fmtN(r.kg)}<small>kg</small></span>
       <span class="bloco" style="--h:${h}px" aria-hidden="true">${p}</span>
     </button>`;
@@ -110,7 +110,7 @@ function render() {
     const sub = st.modo === 'dia' ? `${r.n} ${r.n === 1 ? 'pesagem' : 'pesagens'}` : `${r.dias} ${r.dias === 1 ? 'dia' : 'dias'} · ${r.n} pesagens`;
     return `<li><button data-id="${r.pessoa.id}">
       <span class="pos">${r.pos}</span>${avatar(r.pessoa)}
-      <span class="quem"><b>${esc(r.pessoa.nome)}</b><small>${sub}</small><span class="barra"><i style="--w:${(r.kg / max * 100).toFixed(1)}%"></i></span></span>
+      <span class="quem"><b>${nro(r.pessoa)}${esc(r.pessoa.nome)}</b><small>${sub}</small><span class="barra"><i style="--w:${(r.kg / max * 100).toFixed(1)}%"></i></span></span>
       <span class="val"><b>${fmtN(r.kg)} <small>kg</small></b>${d}</span>
     </button></li>`;
   }).join('');
@@ -129,7 +129,7 @@ function graficos(rk, atual) {
     grid: { left: 8, right: 56, top: 6, bottom: 6, containLabel: true },
     tooltip: { trigger: 'axis', axisPointer: { type: 'none' }, valueFormatter: v => fmtN(v) + ' kg' },
     xAxis: { type: 'value', show: false },
-    yAxis: { type: 'category', inverse: true, data: top.map(r => primeiroNome(r.pessoa.nome)), ...eixo({ axisLine: { show: false }, axisLabel: { color: C.text, fontSize: 12.5 } }) },
+    yAxis: { type: 'category', inverse: true, data: top.map(r => rotulo(r.pessoa)), ...eixo({ axisLine: { show: false }, axisLabel: { color: C.text, fontSize: 12.5 } }) },
     series: [{
       type: 'bar', barWidth: 16, data: top.map((r, i) => ({ value: r.kg, itemStyle: { color: i === 0 ? grad('#FF6A3D', '#F6B940', true) : grad('#5A3A2A', '#B4532A', true), borderRadius: [0, 8, 8, 0] } })),
       label: { show: true, position: 'right', color: C.text, fontFamily: 'IBM Plex Mono', fontSize: 12, formatter: p => fmtN(p.value) },
@@ -151,7 +151,7 @@ function graficos(rk, atual) {
     xAxis: { type: 'category', data: dias.map(d => fmtDia(d, 'curto')), boundaryGap: false, ...eixo({ splitLine: { show: false } }) },
     yAxis: { type: 'value', ...eixo({ axisLine: { show: false } }) },
     series: t5.map((r, i) => ({
-      name: primeiroNome(r.pessoa.nome), type: 'line', smooth: .35, symbol: 'circle', symbolSize: 6, connectNulls: false,
+      name: rotulo(r.pessoa), type: 'line', smooth: .35, symbol: 'circle', symbolSize: 6, connectNulls: false,
       lineStyle: { width: i === 0 ? 3 : 2 }, data: dias.map(d => r.porDia[d] ?? null),
     })),
   });
@@ -183,19 +183,20 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hid
 
 $('#btnBusca').onclick = () => {
   abrirSheet(`<div class="perfil-cab"><h2 id="sheetTitulo">Ver uma pessoa</h2><button class="btn icone fechar" aria-label="Fechar">✕</button></div>
-    <input class="campo" id="q" placeholder="Digite o nome" autocomplete="off" style="margin-top:14px">
+    <input class="campo" id="q" placeholder="Digite o número ou o nome" aria-label="Procurar por número ou nome" autocomplete="off" style="margin-top:14px">
     <ul class="busca-lista" id="qres"></ul>`);
   sheet.querySelector('.fechar').onclick = fecharSheet;
   const q = sheet.querySelector('#q'), res = sheet.querySelector('#qres');
   const pos = new Map(st.rk.map(r => [r.pessoa.id, r]));
   const lista = () => {
-    const t = semAcento(q.value);
-    const ps = st.pessoas.filter(p => semAcento(p.nome).includes(t)).sort((a, b) => (pos.get(a.id)?.pos ?? 999) - (pos.get(b.id)?.pos ?? 999) || a.nome.localeCompare(b.nome));
-    res.innerHTML = ps.map(p => { const r = pos.get(p.id); return `<li><button data-p="${p.id}">${avatar(p)}<span style="flex:1">${esc(p.nome)}</span><span class="num muted">${r ? `${r.pos}º · ${fmtN(r.kg)} kg` : ''}</span></button></li>`; }).join('')
-      || '<li class="muted" style="padding:14px 4px">Ninguém com esse nome.</li>';
+    const b = busca(q.value);
+    const ps = st.pessoas.filter(p => combina(p, b)).sort((x, y) => exato(y, b) - exato(x, b) || (pos.get(x.id)?.pos ?? 999) - (pos.get(y.id)?.pos ?? 999) || (x.numero ?? 1e9) - (y.numero ?? 1e9) || x.nome.localeCompare(y.nome));
+    res.innerHTML = ps.map(p => { const r = pos.get(p.id); return `<li><button data-p="${p.id}">${avatar(p)}<span style="flex:1">${nro(p)}${esc(p.nome)}</span><span class="num muted">${r ? `${r.pos}º · ${fmtN(r.kg)} kg` : ''}</span></button></li>`; }).join('')
+      || `<li class="muted" style="padding:14px 4px">${b.num != null ? `Ninguém com o número ${esc(b.num)}.` : 'Ninguém com esse nome.'}</li>`;
     res.querySelectorAll('[data-p]').forEach(b => b.onclick = () => abrirPerfil(b.dataset.p));
   };
   q.oninput = lista; lista(); setTimeout(() => q.focus(), 300);
+  q.onkeydown = e => { if (e.key === 'Enter') { const pr = res.querySelector('[data-p]'); if (pr) abrirPerfil(pr.dataset.p); } };
 };
 
 async function abrirPerfil(id) {
@@ -203,7 +204,7 @@ async function abrirPerfil(id) {
   const r = st.rk.find(x => x.pessoa.id === id);
   const fim = hoje(), ini = addDias(fim, -29);
   const iniSafra = CONFIG.INICIO_SAFRA < ini ? CONFIG.INICIO_SAFRA : ini;
-  const html = `<div class="perfil-cab">${avatar(p)}<div><h2 id="sheetTitulo">${esc(p.nome)}</h2><div class="muted" style="font-size:13px">${r ? `${r.pos}º lugar · ${esc($('#quandoTxt').textContent)}` : `Sem pesagens em ${esc($('#quandoTxt').textContent.toLowerCase())}`}</div></div>
+  const html = `<div class="perfil-cab">${avatar(p)}<div><h2 id="sheetTitulo">${esc(p.nome)}</h2><div class="muted" style="font-size:13px">${p.numero != null ? `Nº ${p.numero} · ` : ''}${r ? `${r.pos}º lugar · ${esc($('#quandoTxt').textContent)}` : `Sem pesagens em ${esc($('#quandoTxt').textContent.toLowerCase())}`}</div></div>
       <button class="btn icone fechar" aria-label="Fechar">✕</button></div>
     <div class="kpis" id="pk"><div class="kpi"><span>Carregando…</span><b>–</b></div></div>
     <div class="card" style="padding:14px"><h2 style="font-size:15px">Últimos 30 dias</h2><div class="sub">Quilos por dia · linha pontilhada = média da fazenda por pessoa</div><div id="gPessoa" style="height:220px;margin-top:8px"></div></div>`;

@@ -1,10 +1,10 @@
 import { CONFIG } from './config.js';
-import * as S from './store.js';
+import * as S from './store.js?v=2';
 import {
-  hoje, addDias, fmtDia, fmtMes, fmtN, fmtR$, parsePesos, soma, avatar, esc, semAcento, primeiroNome,
+  hoje, addDias, fmtDia, fmtMes, fmtN, fmtR$, parsePesos, soma, avatar, esc, semAcento, primeiroNome, nro, rotulo, busca, combina, exato, porNumero,
   ranking, porDia, listaDias, parseIso, SEMANA, toast, iso,
-} from './util.js';
-import { grafico, eixo, grad, C } from './charts.js';
+} from './util.js?v=2';
+import { grafico, eixo, grad, C } from './charts.js?v=2';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -49,8 +49,8 @@ async function telaLancar() {
       <button class="btn icone" id="dProx" aria-label="Próximo dia">›</button>
     </div>
     <div class="stats" id="statsDia"></div>
-    <div class="ferramentas"><input class="campo" id="filtro" placeholder="Filtrar pelo nome" autocomplete="off" value="${esc(st.filtro)}"><button class="btn" id="btnColar">Colar lista</button></div>
-    <p class="dica">Digite os pesos de cada vez que a pessoa pesou, separados por vírgula ou espaço — ex.: <kbd>50, 24, 34</kbd>. <kbd>Enter</kbd> pula para a próxima pessoa. Decimal com ponto: <kbd>24.5</kbd></p>
+    <div class="ferramentas"><input class="campo" id="filtro" inputmode="search" placeholder="Número ou nome" autocomplete="off" value="${esc(st.filtro)}" aria-label="Procurar pessoa por número ou nome"><button class="btn" id="btnColar">Colar lista</button></div>
+    <p class="dica">Digite os pesos de cada vez que a pessoa pesou, separados por vírgula ou espaço — ex.: <kbd>50, 24, 34</kbd>. <kbd>Enter</kbd> pula para a próxima pessoa. Decimal com ponto: <kbd>24.5</kbd>. Para ir direto a alguém, digite o número da folha no campo de busca e aperte <kbd>Enter</kbd>.</p>
     <div class="grade-lanc" id="grade"></div>`;
   if (!$('.salvarbar')) {
     const bar = document.createElement('div'); bar.className = 'salvarbar';
@@ -62,6 +62,12 @@ async function telaLancar() {
   $('#dProx').onclick = () => trocarDia(addDias(st.dia, 1));
   $('#diaPick').onchange = e => e.target.value && trocarDia(e.target.value);
   $('#filtro').oninput = e => { st.filtro = e.target.value; desenharGrade(); };
+  $('#filtro').onkeydown = e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const alvo = $('.lrow.alvo .pesos') || $('.lrow .pesos');
+    if (alvo) { alvo.focus(); alvo.select(); }
+  };
   $('#btnColar').onclick = abrirColar;
   await carregarDia();
 }
@@ -89,8 +95,9 @@ async function carregarDia() {
 }
 
 function visiveis() {
-  const f = semAcento(st.filtro);
-  return st.pessoas.filter(p => (p.ativo || st.salvo[p.id]?.length) && (!f || semAcento(p.nome).includes(f)));
+  const b = busca(st.filtro);
+  const ps = st.pessoas.filter(p => (p.ativo || st.salvo[p.id]?.length) && combina(p, b));
+  return b.num != null ? ps.sort((x, y) => exato(y, b) - exato(x, b) || porNumero(x, y)) : ps;
 }
 
 function desenharGrade() {
@@ -98,12 +105,14 @@ function desenharGrade() {
   if (!st.pessoas.length) {
     $('#grade').innerHTML = '<div class="sem-resultado"><b style="color:var(--text)">Nenhuma pessoa cadastrada.</b><br>Cadastre a turma na aba Pessoas para começar a lançar.</div>';
   } else if (!ps.length) {
-    $('#grade').innerHTML = '<div class="sem-resultado">Ninguém com esse nome.</div>';
+    const b = busca(st.filtro);
+    $('#grade').innerHTML = `<div class="sem-resultado">${b.num != null ? `Ninguém com o número ${esc(b.num)}.` : 'Ninguém com esse nome.'}</div>`;
   } else {
-    $('#grade').innerHTML = ps.map(p => `
-      <div class="lrow" data-id="${p.id}">
+    const b = busca(st.filtro);
+    $('#grade').innerHTML = ps.map((p, i) => `
+      <div class="lrow${st.filtro && (exato(p, b) || (i === 0 && b.num == null)) ? ' alvo' : ''}" data-id="${p.id}">
         ${avatar(p)}
-        <div class="nm"><b>${esc(p.nome)}</b><small class="nsub"></small></div>
+        <div class="nm"><b>${nro(p)}${esc(p.nome)}</b><small class="nsub"></small></div>
         <div class="entrada">
           <input class="campo pesos" inputmode="decimal" enterkeyhint="next" autocomplete="off" placeholder="ex: 50, 24, 34" aria-label="Pesos de ${esc(p.nome)}" value="${esc(st.txt[p.id] || '')}">
           <div class="chips"></div>
@@ -115,6 +124,8 @@ function desenharGrade() {
       inp.oninput = () => { st.txt[row.dataset.id] = inp.value; atualizarLinha(row); atualizarResumo(); guardarRascunho(); };
       inp.onkeydown = e => {
         const ins = $$('.lrow .pesos'), i = ins.indexOf(inp);
+        // Com busca ativa, Enter volta para a busca: número → Enter → pesos → Enter → próximo número
+        if (e.key === 'Enter' && st.filtro) { e.preventDefault(); const f = $('#filtro'); f.focus(); f.select(); return; }
         if (e.key === 'Enter' || e.key === 'ArrowDown') { e.preventDefault(); (ins[i + 1] || $('#sbSalvar'))?.focus(); }
         if (e.key === 'ArrowUp') { e.preventDefault(); ins[i - 1]?.focus(); }
         if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); salvar(); }
@@ -201,21 +212,30 @@ function casarNome(txt) {
   r = ps.filter(x => partes.every(w => x.n.split(' ').some(y => y.startsWith(w)))); if (r.length === 1) return r[0].p;
   return r.length > 1 ? 'ambiguo' : null;
 }
+// Linhas aceitas: "Maria: 50 24 34", "26 = Neto Romão: 50 46 14" ou "26: 50 46 14" (número da folha e pesos)
 function lerLista(texto) {
   return texto.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-    const m = l.match(/^([^\d]+?)[\s:=\-–]*([\d].*)$/);
-    if (!m) return { linha: l, erro: 'sem pesos' };
-    const p = casarNome(m[1]); const { pesos, erros } = parsePesos(m[2]);
+    let p = null, resto = l;
+    const mn = l.match(/^(?:#|n[º°o.]*\s*)?(\d{1,4})\s*[.=:\-–)]?\s*(.*)$/i);
+    if (mn) {
+      p = st.pessoas.find(x => x.numero === +mn[1]) || null;
+      resto = mn[2];
+      if (!p && !/^[^\d]*[a-zà-ú]/i.test(resto)) return { linha: l, erro: `número ${mn[1]} não cadastrado` };
+    }
+    const m = resto.match(/^([^\d]*?)[\s:=\-–.]*(\d.*)?$/);
+    if (!m || !m[2]) return { linha: l, erro: 'sem pesos' };
+    if (!p) p = casarNome(m[1]);
     if (!p) return { linha: l, erro: 'nome não encontrado' };
     if (p === 'ambiguo') return { linha: l, erro: 'nome parecido com mais de uma pessoa' };
+    const { pesos, erros } = parsePesos(m[2]);
     if (erros.length || !pesos.length) return { linha: l, erro: 'peso inválido' };
     return { linha: l, p, pesos };
   });
 }
 function abrirColar() {
   abrirSheet(`<div class="colar">
-    <div class="card-cab"><div><h2 style="font:700 20px var(--f-disp)">Colar lista do dia</h2><div class="sub">Uma pessoa por linha, nome e depois os pesos. Pode colar do bloco de notas ou do WhatsApp.</div></div><button class="btn icone fechar" aria-label="Fechar">✕</button></div>
-    <textarea class="campo" id="txtLista" placeholder="Maria das Graças: 50, 24, 34&#10;Cícero 32 41&#10;Raimunda - 28, 30, 22, 19"></textarea>
+    <div class="card-cab"><div><h2 style="font:700 20px var(--f-disp)">Colar lista do dia</h2><div class="sub">Uma pessoa por linha: o número da folha ou o nome, e depois os pesos. Pode colar do bloco de notas ou do WhatsApp.</div></div><button class="btn icone fechar" aria-label="Fechar">✕</button></div>
+    <textarea class="campo" id="txtLista" placeholder="26: 50 46 14&#10;27 = Wildo: 16 22 34 10&#10;Henrique - 26, 20, 40"></textarea>
     <ul class="previa" id="previa"></ul>
     <button class="btn primario" id="aplicar" disabled style="width:100%">Colocar nos campos</button>
     <p class="dica" style="margin-top:10px">Os pesos substituem o que já estiver no campo da pessoa. Depois é só conferir e salvar o dia.</p></div>`);
@@ -226,7 +246,7 @@ function abrirColar() {
     itens = lerLista(ta.value);
     pv.innerHTML = itens.map(i => i.erro
       ? `<li class="falha"><span>${esc(i.linha)}</span><span>${i.erro}</span></li>`
-      : `<li><span>${esc(i.p.nome)}</span><span class="num">${i.pesos.map(fmtN).join(' + ')} = <b>${fmtN(soma(i.pesos))} kg</b></span></li>`).join('');
+      : `<li><span>${nro(i.p)}${esc(i.p.nome)}</span><span class="num">${i.pesos.map(fmtN).join(' + ')} = <b>${fmtN(soma(i.pesos))} kg</b></span></li>`).join('');
     const bons = itens.filter(i => !i.erro).length;
     ap.disabled = !bons; ap.textContent = bons ? `Colocar ${bons} ${bons === 1 ? 'pessoa' : 'pessoas'} nos campos` : 'Colocar nos campos';
   };
@@ -244,24 +264,34 @@ function telaPessoas() {
   const ativos = st.pessoas.filter(p => p.ativo).length;
   $('#conteudo').innerHTML = `<div class="duas">
     <div class="card">
-      <h2>Cadastrar pessoas</h2><div class="sub">Um nome por linha. Dá para colar a lista inteira de uma vez.</div>
-      <textarea class="campo" id="novos" style="margin:12px 0" placeholder="Maria das Graças&#10;Cícero Alves&#10;Raimunda Sousa"></textarea>
+      <h2>Cadastrar pessoas</h2><div class="sub">Uma pessoa por linha, com o número da folha antes do nome. Dá para colar a lista inteira de uma vez.</div>
+      <textarea class="campo" id="novos" style="margin:12px 0" placeholder="39 Francisco Neto&#10;40 = Maria das Graças&#10;41 Cícero Alves"></textarea>
       <button class="btn primario" id="btnAdd" style="width:100%">Cadastrar</button>
     </div>
     <div class="card">
-      <div class="card-cab"><div><h2>Turma</h2><div class="sub">${ativos} ativos · toque no nome para corrigir</div></div></div>
-      <input class="campo" id="fP" placeholder="Filtrar pelo nome" style="margin-bottom:6px">
+      <div class="card-cab"><div><h2>Turma</h2><div class="sub">${ativos} ativos · toque no número ou no nome para corrigir</div></div></div>
+      <input class="campo" id="fP" placeholder="Número ou nome" style="margin-bottom:6px" aria-label="Procurar pessoa por número ou nome">
       <div id="listaP"></div>
     </div></div>`;
   const desenhar = () => {
-    const f = semAcento($('#fP').value);
-    const ps = st.pessoas.filter(p => semAcento(p.nome).includes(f)).sort((a, b) => (b.ativo - a.ativo) || a.nome.localeCompare(b.nome));
+    const b = busca($('#fP').value);
+    const ps = st.pessoas.filter(p => combina(p, b)).sort((x, y) => exato(y, b) - exato(x, b) || (y.ativo - x.ativo) || porNumero(x, y));
     $('#listaP').innerHTML = ps.map(p => `<div class="prow ${p.ativo ? '' : 'inativo'}" data-id="${p.id}">${avatar(p)}
-      <input class="campo" value="${esc(p.nome)}" aria-label="Nome">
+      <input class="campo num-campo" inputmode="numeric" value="${p.numero ?? ''}" placeholder="nº" aria-label="Número de ${esc(p.nome)}">
+      <input class="campo nome-campo" value="${esc(p.nome)}" aria-label="Nome">
       <button class="btn tag">${p.ativo ? 'Ativo' : 'Inativo'}</button></div>`).join('') || '<div class="sem-resultado">Ninguém por aqui ainda.</div>';
     $$('.prow').forEach(row => {
       const p = st.pessoas.find(x => x.id === row.dataset.id);
-      $('input', row).onchange = async e => {
+      $('.num-campo', row).onchange = async e => {
+        const v = e.target.value.trim(), numero = v === '' ? null : Number(v);
+        if (numero !== null && (!Number.isInteger(numero) || numero < 1)) { e.target.value = p.numero ?? ''; return toast('O número precisa ser inteiro, como 12.', 'erro'); }
+        if (numero === p.numero) return;
+        const dono = numero !== null && st.pessoas.find(x => x.numero === numero && x.id !== p.id);
+        if (dono) { e.target.value = p.numero ?? ''; return toast(`O número ${numero} já é de ${dono.nome}.`, 'erro'); }
+        try { await S.atualizarPessoa(p.id, { numero }); p.numero = numero; st.pessoas.sort(porNumero); toast(numero === null ? 'Número removido' : `${primeiroNome(p.nome)} agora é o nº ${numero}`, 'ok'); }
+        catch (er) { e.target.value = p.numero ?? ''; toast(er.message, 'erro'); }
+      };
+      $('.nome-campo', row).onchange = async e => {
         const nome = e.target.value.trim(); if (!nome || nome === p.nome) { e.target.value = p.nome; return; }
         try { await S.atualizarPessoa(p.id, { nome }); p.nome = nome; toast('Nome corrigido', 'ok'); } catch (er) { toast(er.message, 'erro'); }
       };
@@ -274,13 +304,23 @@ function telaPessoas() {
   $('#fP').oninput = desenhar; desenhar();
   $('#btnAdd').onclick = async () => {
     const existentes = new Set(st.pessoas.map(p => semAcento(p.nome)));
-    const nomes = [...new Set($('#novos').value.split('\n').map(s => s.trim().replace(/\s+/g, ' ')).filter(Boolean))];
-    const novos = nomes.filter(n => !existentes.has(semAcento(n)));
-    if (!nomes.length) return toast('Escreva pelo menos um nome.');
+    const usados = new Map(st.pessoas.filter(p => p.numero != null).map(p => [p.numero, p.nome]));
+    const linhas = $('#novos').value.split('\n').map(s => s.trim().replace(/\s+/g, ' ')).filter(Boolean).map(s => {
+      const m = s.match(/^(?:#|n[º°o.]*\s*)?(\d{1,4})\s*[.=:\-–)]?\s*(.+)$/i);
+      return m ? { numero: +m[1], nome: m[2].trim() } : { numero: null, nome: s };
+    });
+    if (!linhas.length) return toast('Escreva pelo menos um nome.');
+    const novos = [], vistos = new Set();
+    for (const l of linhas) {
+      if (existentes.has(semAcento(l.nome)) || vistos.has(semAcento(l.nome))) continue;
+      if (l.numero != null && usados.has(l.numero)) return toast(`O número ${l.numero} já é de ${usados.get(l.numero)}. Escolha outro para ${l.nome}.`, 'erro');
+      if (l.numero != null) usados.set(l.numero, l.nome);
+      vistos.add(semAcento(l.nome)); novos.push(l);
+    }
     if (!novos.length) return toast('Essas pessoas já estão cadastradas.');
     try {
       await S.adicionarPessoas(novos); st.pessoas = await S.listarPessoas();
-      toast(`${novos.length} ${novos.length === 1 ? 'pessoa cadastrada' : 'pessoas cadastradas'}${nomes.length > novos.length ? ` (${nomes.length - novos.length} já existiam)` : ''}`, 'ok');
+      toast(`${novos.length} ${novos.length === 1 ? 'pessoa cadastrada' : 'pessoas cadastradas'}${linhas.length > novos.length ? ` (${linhas.length - novos.length} já existiam)` : ''}`, 'ok');
       telaPessoas();
     } catch (e) { toast(e.message, 'erro'); }
   };
@@ -365,7 +405,7 @@ function desenharAnalise(dados, ini, fim) {
     grid: { left: 8, right: 54, top: 4, bottom: 4, containLabel: true },
     tooltip: { trigger: 'axis', axisPointer: { type: 'none' }, valueFormatter: v => fmtN(v) + ' kg' },
     xAxis: { type: 'value', show: false },
-    yAxis: { type: 'category', inverse: true, data: t10.map(r => primeiroNome(r.pessoa.nome)), ...eixo({ axisLine: { show: false }, axisLabel: { color: C.text, fontSize: 12.5 } }) },
+    yAxis: { type: 'category', inverse: true, data: t10.map(r => rotulo(r.pessoa)), ...eixo({ axisLine: { show: false }, axisLabel: { color: C.text, fontSize: 12.5 } }) },
     series: [{ type: 'bar', barWidth: 14, data: t10.map((r, i) => ({ value: r.kg, itemStyle: { color: i < 3 ? grad('#FF6A3D', '#F6B940', true) : grad('#4A3326', '#9C5B3B', true), borderRadius: [0, 7, 7, 0] } })), label: { show: true, position: 'right', color: C.text, fontFamily: 'IBM Plex Mono', fontSize: 12, formatter: p => fmtN(p.value) } }],
   });
 
@@ -388,28 +428,28 @@ function desenharAnalise(dados, ini, fim) {
     grid: { left: 8, right: 12, top: 4, bottom: 46, containLabel: true },
     tooltip: { formatter: p => `${esc(t15[p.value[1]].pessoa.nome)}<br>${fmtDia(diasMapa[p.value[0]])}<br><b>${fmtN(p.value[2])} kg</b>` },
     xAxis: { type: 'category', data: diasMapa.map(d => fmtDia(d, 'curto')), splitArea: { show: false }, ...eixo({ splitLine: { show: false } }) },
-    yAxis: { type: 'category', inverse: true, data: t15.map(r => primeiroNome(r.pessoa.nome)), ...eixo({ axisLine: { show: false }, splitLine: { show: false }, axisLabel: { color: C.text } }) },
+    yAxis: { type: 'category', inverse: true, data: t15.map(r => rotulo(r.pessoa)), ...eixo({ axisLine: { show: false }, splitLine: { show: false }, axisLabel: { color: C.text } }) },
     visualMap: { min: 0, max: Math.ceil(vmax), calculable: false, orient: 'horizontal', left: 'center', bottom: 0, itemHeight: 140, itemWidth: 10, text: [`${fmtN(vmax)} kg`, '0'], textStyle: { color: C.muted, fontSize: 11 }, inRange: { color: ['#2A1F18', '#7A3B22', '#D2582F', '#F6B940'] } },
     series: [{ type: 'heatmap', data: vals, itemStyle: { borderColor: '#1D1814', borderWidth: 2, borderRadius: 4 }, emphasis: { itemStyle: { borderColor: C.text } } }],
   });
 
   // Folha
   $('#folhaSub').textContent = `${fmtDia(ini, 'curto')}/${ini.slice(0, 4)} a ${fmtDia(fim, 'curto')}/${fim.slice(0, 4)} · ${fmtR$(st.preco)} por kg`;
-  const linhas = rk.map(r => ({ nome: r.pessoa.nome, dias: r.dias, n: r.n, kg: r.kg, media: r.kg / r.dias, valor: r.kg * st.preco }));
-  const cols = [['nome', 'Nome'], ['dias', 'Dias'], ['n', 'Pesagens'], ['kg', 'Kg'], ['media', 'Kg/dia'], ['valor', 'A pagar']];
+  const linhas = rk.map(r => ({ numero: r.pessoa.numero ?? null, nome: r.pessoa.nome, dias: r.dias, n: r.n, kg: r.kg, media: r.kg / r.dias, valor: r.kg * st.preco }));
+  const cols = [['numero', 'Nº'], ['nome', 'Nome'], ['dias', 'Dias'], ['n', 'Pesagens'], ['kg', 'Kg'], ['media', 'Kg/dia'], ['valor', 'A pagar']];
   const desenharFolha = () => {
     const { col, dir } = st.ordem;
     linhas.sort((a, b) => (typeof a[col] === 'string' ? a[col].localeCompare(b[col]) : a[col] - b[col]) * dir);
     $('#folha').innerHTML = `<thead><tr>${cols.map(([k, t]) => `<th data-k="${k}">${t}${col === k ? (dir > 0 ? ' ↑' : ' ↓') : ''}</th>`).join('')}</tr></thead>
-      <tbody>${linhas.map(l => `<tr><td>${esc(l.nome)}</td><td>${l.dias}</td><td>${l.n}</td><td>${fmtN(l.kg)}</td><td>${fmtN(l.media)}</td><td>${fmtR$(l.valor)}</td></tr>`).join('') || '<tr><td colspan="6" class="dim" style="text-align:center">Sem pesagens no período</td></tr>'}</tbody>
+      <tbody>${linhas.map(l => `<tr><td class="num">${l.numero ?? '–'}</td><td>${esc(l.nome)}</td><td>${l.dias}</td><td>${l.n}</td><td>${fmtN(l.kg)}</td><td>${fmtN(l.media)}</td><td>${fmtR$(l.valor)}</td></tr>`).join('') || '<tr><td colspan="7" class="dim" style="text-align:center">Sem pesagens no período</td></tr>'}</tbody>
       <tfoot><tr><td>Total · ${linhas.length} pessoas</td><td></td><td>${nPes}</td><td>${fmtN(total)}</td><td></td><td>${fmtR$(total * st.preco)}</td></tr></tfoot>`;
-    $$('#folha th').forEach(th => th.onclick = () => { st.ordem = { col: th.dataset.k, dir: st.ordem.col === th.dataset.k ? -st.ordem.dir : (th.dataset.k === 'nome' ? 1 : -1) }; desenharFolha(); });
+    $$('#folha th').forEach(th => th.onclick = () => { st.ordem = { col: th.dataset.k, dir: st.ordem.col === th.dataset.k ? -st.ordem.dir : (th.dataset.k === 'nome' || th.dataset.k === 'numero' ? 1 : -1) }; desenharFolha(); });
   };
   desenharFolha();
   $('#btnCsv').onclick = () => {
     const n2 = v => v.toFixed(2).replace('.', ',');
-    const csv = ['Nome;Dias;Pesagens;Kg;Kg por dia;Valor (R$)', ...linhas.map(l => [`"${l.nome}"`, l.dias, l.n, n2(l.kg), n2(l.media), n2(l.valor)].join(';')),
-      ['"TOTAL"', '', nPes, n2(total), '', n2(total * st.preco)].join(';')].join('\r\n');
+    const csv = ['Nº;Nome;Dias;Pesagens;Kg;Kg por dia;Valor (R$)', ...linhas.map(l => [l.numero ?? '', `"${l.nome}"`, l.dias, l.n, n2(l.kg), n2(l.media), n2(l.valor)].join(';')),
+      ['', '"TOTAL"', '', nPes, n2(total), '', n2(total * st.preco)].join(';')].join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
     a.download = `folha-colheita-${ini}-a-${fim}.csv`; a.click();

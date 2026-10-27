@@ -114,3 +114,7 @@ drop policy if exists "admin configuracoes" on public.configuracoes;
 create policy "admin pessoas"       on public.pessoas       for all to authenticated using (public.eh_admin()) with check (public.eh_admin());
 create policy "admin pesagens"      on public.pesagens      for all to authenticated using (public.eh_admin()) with check (public.eh_admin());
 create policy "admin configuracoes" on public.configuracoes for all to authenticated using (public.eh_admin()) with check (public.eh_admin());
+
+-- Número de cada pessoa (o mesmo da folha de pesagem), para buscar pelo número
+alter table public.pessoas add column if not exists numero integer check (numero > 0);
+create unique index if not exists pessoas_numero_key on public.pessoas (numero);

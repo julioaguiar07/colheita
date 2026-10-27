@@ -1,5 +1,5 @@
 import { CONFIG } from './config.js';
-import { iso, addDias, hoje } from './util.js';
+import { iso, addDias, hoje, porNumero } from './util.js?v=2';
 
 export const DEMO = !CONFIG.SUPABASE_URL;
 
@@ -20,7 +20,7 @@ function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let
 function semear() {
   const nomes = ['Antônio Carlos', 'Maria das Graças', 'Francisco Neto', 'Raimunda Sousa', 'José Wilson', 'Francisca Lima', 'Cícero Alves', 'Luzia Pereira', 'Expedito Rocha', 'Damiana Costa', 'Raimundo Nonato', 'Joana Darc', 'Edilson Barros', 'Socorro Melo', 'Valdemir Gomes', 'Ivonete Silva', 'Manoel Bezerra', 'Terezinha Lopes', 'Gildásio Ramos', 'Aparecida Nunes'];
   const r = rng(42);
-  const pessoas = nomes.map((nome, i) => ({ id: `p${String(i + 1).padStart(2, '0')}`, nome, ativo: true, forca: 0.6 + r() * 0.8 }));
+  const pessoas = nomes.map((nome, i) => ({ id: `p${String(i + 1).padStart(2, '0')}`, numero: i + 1, nome, ativo: true, forca: 0.6 + r() * 0.8 }));
   const pesagens = [];
   for (let d = addDias(hoje(), -45); d <= hoje(); d = addDias(d, 1)) {
     if (new Date(d + 'T12:00').getDay() === 0) continue;
@@ -55,12 +55,13 @@ export async function sair() { if (!DEMO) await (await sb()).auth.signOut(); }
 
 /* ---------------- pessoas ---------------- */
 export async function listarPessoas() {
-  if (DEMO) return db().pessoas.map(p => ({ ...p })).sort((a, b) => a.nome.localeCompare(b.nome));
-  return ok(await (await sb()).from('pessoas').select('id,nome,ativo').order('nome'));
+  if (DEMO) return db().pessoas.map(p => ({ ...p })).sort(porNumero);
+  return ok(await (await sb()).from('pessoas').select('id,numero,nome,ativo')).sort(porNumero);
 }
-export async function adicionarPessoas(nomes) {
-  if (DEMO) { const d = db(); for (const nome of nomes) d.pessoas.push({ id: 'p' + Math.random().toString(36).slice(2, 9), nome, ativo: true }); salvar(); return; }
-  ok(await (await sb()).from('pessoas').insert(nomes.map(nome => ({ nome }))));
+// lista = [{ nome, numero }] (numero pode ser null)
+export async function adicionarPessoas(lista) {
+  if (DEMO) { const d = db(); for (const { nome, numero } of lista) d.pessoas.push({ id: 'p' + Math.random().toString(36).slice(2, 9), nome, numero: numero ?? null, ativo: true }); salvar(); return; }
+  ok(await (await sb()).from('pessoas').insert(lista.map(({ nome, numero }) => ({ nome, numero: numero ?? null }))));
 }
 export async function atualizarPessoa(id, patch) {
   if (DEMO) { Object.assign(db().pessoas.find(p => p.id === id), patch); salvar(); return; }
