@@ -1,10 +1,10 @@
 import { CONFIG } from './config.js';
-import * as S from './store.js?v=2';
+import * as S from './store.js?v=3';
 import {
   hoje, addDias, fmtDia, fmtMes, fmtN, fmtR$, parsePesos, soma, avatar, esc, semAcento, primeiroNome, nro, rotulo, busca, combina, exato, porNumero,
   ranking, porDia, listaDias, parseIso, SEMANA, toast, iso,
-} from './util.js?v=2';
-import { grafico, eixo, grad, C } from './charts.js?v=2';
+} from './util.js?v=3';
+import { grafico, eixo, grad, C } from './charts.js?v=3';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];

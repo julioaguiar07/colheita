@@ -1,7 +1,7 @@
 import { CONFIG } from './config.js';
-import * as S from './store.js?v=2';
-import { hoje, addDias, fmtDia, fmtMes, fmtN, periodo, ranking, porDia, entre, listaDias, avatar, esc, primeiroNome, semAcento, parseIso, toast, nro, rotulo, busca, combina, exato } from './util.js?v=2';
-import { grafico, eixo, grad, C, SERIE } from './charts.js?v=2';
+import * as S from './store.js?v=3';
+import { hoje, addDias, fmtDia, fmtMes, fmtN, periodo, ranking, porDia, entre, listaDias, avatar, esc, primeiroNome, semAcento, parseIso, toast, nro, rotulo, busca, combina, exato } from './util.js?v=3';
+import { grafico, eixo, grad, C, SERIE } from './charts.js?v=3';
 
 const $ = s => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -10,13 +10,14 @@ const st = {
   dia: params.get('dia') || null,
   mes: params.get('mes') || hoje().slice(0, 7),
   pessoas: [], rk: [], dados: [], per: null,
+  aba: params.get('aba') === 'ranking' ? 'ranking' : 'numeros', safra: [], pesDia: [], fNum: '',
 };
 
 $('#fazenda').textContent = CONFIG.FAZENDA;
 if (S.DEMO) $('#demo').innerHTML = '<p class="aviso-demo">Modo demonstração: nomes e pesos de exemplo.</p>';
 
 function syncUrl() {
-  const p = new URLSearchParams({ modo: st.modo });
+  const p = new URLSearchParams({ aba: st.aba, modo: st.modo });
   if (st.modo === 'mes') p.set('mes', st.mes); else p.set('dia', st.dia);
   history.replaceState(null, '', '?' + p);
 }
@@ -28,6 +29,17 @@ function setModo(m) {
   carregar();
 }
 document.querySelectorAll('#modos button').forEach(b => b.onclick = () => setModo(b.dataset.modo));
+
+function setAba(a) {
+  st.aba = a;
+  document.querySelectorAll('#abas button').forEach(b => b.setAttribute('aria-pressed', b.dataset.aba === a));
+  $('#vNumeros').hidden = a !== 'numeros'; $('#vRanking').hidden = a !== 'ranking';
+  syncUrl();
+  if (st.per) render();
+}
+document.querySelectorAll('#abas button').forEach(b => b.onclick = () => setAba(b.dataset.aba));
+$('#fNum').oninput = e => { st.fNum = e.target.value; renderNumeros(); };
+$('#fNum').onkeydown = e => { if (e.key === 'Enter') { const b = $('#nLista [data-id]'); if (b) abrirPerfil(b.dataset.id); } };
 
 function mover(dir) {
   if (st.modo === 'mes') {
@@ -59,8 +71,12 @@ async function carregar(silencioso = false) {
   $('#prox').disabled = st.modo === 'mes' ? st.mes >= hoje().slice(0, 7) : st.dia >= hoje();
   syncUrl();
   try {
-    const [pessoas, dados] = await Promise.all([S.listarPessoas(), S.totais(per.anterior.inicio, per.fim)]);
-    st.pessoas = pessoas; st.dados = dados;
+    const [pessoas, dados, safra, pesDia] = await Promise.all([
+      S.listarPessoas(), S.totais(per.anterior.inicio, per.fim),
+      S.totais(CONFIG.INICIO_SAFRA, hoje()),
+      st.modo === 'dia' ? S.pesagensDoDia(st.dia) : Promise.resolve([]),
+    ]);
+    st.pessoas = pessoas; st.dados = dados; st.safra = safra; st.pesDia = pesDia;
     render(silencioso);
     $('#atualizado').textContent = 'atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
@@ -116,7 +132,42 @@ function render() {
   }).join('');
   document.querySelectorAll('[data-id]').forEach(b => b.onclick = () => abrirPerfil(b.dataset.id));
 
-  graficos(rk, atual);
+  if (st.aba === 'ranking') graficos(rk, atual);
+  renderNumeros();
+}
+
+/* ---------------- Aba "Por número": todos em ordem de número ---------------- */
+function renderNumeros() {
+  const atual = st.dados.filter(t => entre(t, st.per));
+  const per = new Map(), safra = new Map(), pes = new Map();
+  for (const t of atual) { const a = per.get(t.pessoa_id) || { kg: 0, n: 0, dias: 0 }; a.kg += +t.kg; a.n += +t.n; a.dias++; per.set(t.pessoa_id, a); }
+  for (const t of st.safra) safra.set(t.pessoa_id, (safra.get(t.pessoa_id) || 0) + +t.kg);
+  for (const p of st.pesDia) { if (!pes.has(p.pessoa_id)) pes.set(p.pessoa_id, []); pes.get(p.pessoa_id).push(+p.kg); }
+
+  const rotPer = st.modo === 'dia' ? 'No dia' : st.modo === 'mes' ? 'No mês' : `Em ${st.modo} dias`;
+  $('#nCab').innerHTML = `<span>Nº</span><span>Nome</span><span>${rotPer}</span><span>Na safra</span>`;
+
+  const b = busca(st.fNum);
+  const ps = st.pessoas.filter(p => (p.ativo || per.has(p.id) || safra.has(p.id)) && combina(p, b))
+    .sort((x, y) => exato(y, b) - exato(x, b) || (x.numero ?? 1e9) - (y.numero ?? 1e9) || x.nome.localeCompare(y.nome));
+
+  $('#nLista').innerHTML = ps.map(p => {
+    const a = per.get(p.id), s = safra.get(p.id) || 0;
+    let sub;
+    if (st.modo === 'dia') sub = pes.has(p.id) ? pes.get(p.id).map(fmtN).join(' + ') : 'não pesou neste dia';
+    else sub = a ? `${a.dias} ${a.dias === 1 ? 'dia' : 'dias'} · ${a.n} ${a.n === 1 ? 'pesagem' : 'pesagens'}` : 'sem pesagem no período';
+    return `<li><button data-id="${p.id}" aria-label="Número ${p.numero ?? 'sem número'}, ${esc(p.nome)}: ${fmtN(a?.kg || 0)} quilos ${rotPer.toLowerCase()}, ${fmtN(s)} na safra">
+      <span class="nbig${p.numero == null ? ' sem' : ''}">${p.numero ?? '–'}</span>
+      <span class="quem"><b>${esc(p.nome)}</b><small class="num">${esc(sub)}</small></span>
+      <span class="cper${a ? '' : ' zero'}"><b>${fmtN(a?.kg || 0)}</b><small>kg</small></span>
+      <span class="csaf"><b>${fmtN(s)}</b><small>kg</small></span>
+    </button></li>`;
+  }).join('') || `<li class="vazio">${b.num != null ? `Ninguém com o número ${esc(b.num)}.` : 'Ninguém com esse nome.'}</li>`;
+  $('#nLista').querySelectorAll('[data-id]').forEach(el => el.onclick = () => abrirPerfil(el.dataset.id));
+
+  const totPer = atual.reduce((x, t) => x + +t.kg, 0), totSaf = st.safra.reduce((x, t) => x + +t.kg, 0);
+  $('#nTot').innerHTML = `<span></span><span>Todos (${st.pessoas.filter(p => p.ativo || per.has(p.id)).length} pessoas)</span>
+    <span class="cper"><b>${fmtN(totPer)}</b><small>kg</small></span><span class="csaf"><b>${fmtN(totSaf)}</b><small>kg</small></span>`;
 }
 
 function graficos(rk, atual) {
@@ -243,6 +294,7 @@ async function abrirPerfil(id) {
 /* ---------------- início ---------------- */
 (async () => {
   if (!st.dia) { try { st.dia = (await S.ultimoDia()) || hoje(); } catch { st.dia = hoje(); } }
+  setAba(st.aba);
   setModo(st.modo);
   setInterval(() => { if (document.visibilityState === 'visible' && sheet.hidden) carregar(true); }, 60000);
 })();

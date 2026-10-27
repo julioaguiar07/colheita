@@ -92,3 +92,53 @@
 .kpi b small { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 2px; }
 .kpi.destaque { background: linear-gradient(135deg, rgba(255, 106, 61, .16), rgba(246, 185, 64, .07)); border-color: rgba(255, 106, 61, .35); }
 @media (min-width: 520px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
+
+/* ---------- Abas da página: Por número | Ranking ---------- */
+.abas-pub { display: flex; gap: 4px; max-width: 520px; margin: 2px auto 12px; border-bottom: 1px solid var(--line); }
+.abas-pub button {
+  flex: 1; background: none; border: 0; padding: 10px 8px 12px; position: relative;
+  font: 700 17px/1 var(--f-disp); color: var(--muted); letter-spacing: -.01em; transition: color .15s;
+}
+.abas-pub button::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: transparent; transition: background .2s; }
+.abas-pub button[aria-pressed=true] { color: var(--text); }
+.abas-pub button[aria-pressed=true]::after { background: linear-gradient(90deg, var(--caju), var(--sol)); }
+
+/* ---------- Por número ---------- */
+.numeros { max-width: 640px; margin: 14px auto 0; display: grid; gap: 10px; }
+.ntabela { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.ncab, .nlista li > button, .ntot {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) 70px 78px; align-items: center; gap: 10px; padding: 0 14px;
+}
+.ncab { padding-block: 10px; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line); }
+.ncab span:nth-child(n+3) { text-align: right; }
+.nlista { list-style: none; margin: 0; padding: 0; }
+.nlista li + li > button { border-top: 1px solid var(--line); }
+.nlista li > button { width: 100%; background: none; border: 0; text-align: left; padding-block: 11px; }
+.nlista li > button:hover { background: rgba(255, 255, 255, .02); }
+.nlista .vazio { padding: 28px 16px; }
+.nbig {
+  width: 44px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+  font: 700 17px/1 var(--f-num); color: var(--sol); background: rgba(246, 185, 64, .1); border: 1px solid rgba(246, 185, 64, .3);
+}
+.nbig.sem { color: var(--dim); background: none; border-color: var(--line2); }
+.nlista .quem { min-width: 0; }
+.nlista .quem b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nlista .quem small { display: block; color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; }
+.cper, .csaf { text-align: right; white-space: nowrap; }
+.cper b { font: 600 17px var(--f-num); }
+.csaf b { font: 500 14px var(--f-num); color: var(--muted); }
+.cper small, .csaf small { font-size: 10.5px; color: var(--dim); margin-left: 2px; }
+.cper.zero b { color: var(--dim); font-weight: 500; }
+.ntot { padding-block: 12px; border-top: 1px solid var(--line2); background: var(--card2); font-weight: 600; font-size: 13.5px; }
+.ntot .csaf b { color: var(--text); }
+@media (max-width: 380px) {
+  .ncab, .nlista li > button, .ntot { grid-template-columns: 40px minmax(0, 1fr) 60px 66px; gap: 8px; padding-inline: 10px; }
+  .nbig { width: 40px; }
+}
+.nlista .quem b { white-space: normal; overflow: visible; line-height: 1.25; }
+.nlista .quem small { white-space: normal; overflow: visible; line-height: 1.35; margin-top: 2px; }
+@media (max-width: 480px) {
+  .ncab, .nlista li > button, .ntot { grid-template-columns: 40px minmax(0, 1fr) 58px 66px; gap: 8px; padding-inline: 12px; }
+  .nbig { width: 40px; height: 38px; font-size: 16px; }
+  .cper b { font-size: 16px; } .csaf b { font-size: 13px; }
+}

@@ -1,5 +1,5 @@
 import { CONFIG } from './config.js';
-import { iso, addDias, hoje, porNumero } from './util.js?v=2';
+import { iso, addDias, hoje, porNumero } from './util.js?v=3';
 
 export const DEMO = !CONFIG.SUPABASE_URL;
 
